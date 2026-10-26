@@ -180,5 +180,36 @@ def eliminar_cliente(cliente_id: int):
             detail="No se pudo eliminar el cliente"
         )
 
+
+@router.get("/{cliente_id}/pedidos")
+def listar_pedidos_cliente(cliente_id: int):
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM clientes WHERE id = %s",
+                (cliente_id,)
+            )
+
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Cliente no encontrado"
+                )
+
+            cursor.execute(
+                """
+                SELECT id, cliente_id, fecha, estado, total
+                FROM pedidos
+                WHERE cliente_id = %s
+                ORDER BY fecha DESC
+                """,
+                (cliente_id,)
+            )
+
+            return cursor.fetchall()
+
     finally:
         conexion.close()
+
