@@ -215,3 +215,90 @@ def consultar_pedido(pedido_id: int):
 
     finally:
         conexion.close()
+
+
+@router.post("/{pedido_id}/cancelar")
+def cancelar_pedido(pedido_id: int):
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, estado
+                FROM pedidos
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (pedido_id,)
+            )
+
+            pedido = cursor.fetchone()
+
+            if not pedido:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Pedido no encontrado"
+                )
+
+            if pedido["estado"] != "confirmado":
+                raise HTTPException(
+                    status_code=409,
+                    detail="El pedido ya fue cancelado o no se puede cancelar"
+                )
+
+            cursor.execute(
+                """
+                SELECT producto_id, cantidad
+                FROM detalle_pedidos
+                WHERE pedido_id = %s
+                """,
+                (pedido_id,)
+            )
+
+            detalles = cursor.fetchall()
+
+            for detalle in detalles:
+                cursor.execute(
+                    """
+                    UPDATE productos
+                    SET stock = stock + %s
+                    WHERE id = %s
+                    """,
+                    (
+                        detalle["cantidad"],
+                        detalle["producto_id"]
+                    )
+                )
+
+            cursor.execute(
+                """
+                UPDATE pedidos
+                SET estado = 'cancelado'
+                WHERE id = %s
+                """,
+                (pedido_id,)
+            )
+
+        conexion.commit()
+
+        return {
+            "mensaje": "Pedido cancelado correctamente",
+            "pedido_id": pedido_id,
+            "estado": "cancelado",
+            "productos_devueltos": len(detalles)
+        }
+
+    except HTTPException:
+        conexion.rollback()
+        raise
+
+    except Exception:
+        conexion.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo cancelar el pedido"
+        )
+
+    finally:
+        conexion.close()
