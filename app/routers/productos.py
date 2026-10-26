@@ -1,6 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, status
-
+from fastapi import APIRouter, HTTPException, Query, status
 from app.database import obtener_conexion
 from app.schemas import ProductoCrear, ProductoRespuesta
 
@@ -46,23 +45,39 @@ def crear_producto(producto: ProductoCrear):
         conexion.close()
 
 
+
 @router.get("/", response_model=list[ProductoRespuesta])
-def listar_productos():
+def listar_productos(
+    buscar: str | None = Query(default=None, min_length=1)
+):
     conexion = obtener_conexion()
 
     try:
         with conexion.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, nombre, precio, stock
-                FROM productos
-                ORDER BY id
-                """
-            )
+            if buscar:
+                cursor.execute(
+                    """
+                    SELECT id, nombre, precio, stock
+                    FROM productos
+                    WHERE nombre LIKE %s
+                    ORDER BY id
+                    """,
+                    (f"%{buscar}%",)
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, nombre, precio, stock
+                    FROM productos
+                    ORDER BY id
+                    """
+                )
+
             return cursor.fetchall()
 
     finally:
         conexion.close()
+
 
 
 @router.get("/{producto_id}", response_model=ProductoRespuesta)
@@ -183,6 +198,59 @@ def eliminar_producto(producto_id: int):
         raise HTTPException(
             status_code=500,
             detail="No se pudo eliminar el producto"
+        )
+
+    finally:
+        conexion.close()
+
+
+@router.patch("/{producto_id}/stock")
+def actualizar_stock(
+    producto_id: int,
+    stock: int = Query(ge=0)
+):
+    conexion = obtener_conexion()
+
+    try:
+        with conexion.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE productos
+                SET stock = %s
+                WHERE id = %s
+                """,
+                (stock, producto_id)
+            )
+
+            if cursor.rowcount == 0:
+                cursor.execute(
+                    "SELECT id FROM productos WHERE id = %s",
+                    (producto_id,)
+                )
+
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Producto no encontrado"
+                    )
+
+        conexion.commit()
+
+        return {
+            "mensaje": "Stock actualizado correctamente",
+            "producto_id": producto_id,
+            "stock": stock
+        }
+
+    except HTTPException:
+        conexion.rollback()
+        raise
+
+    except Exception:
+        conexion.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo actualizar el stock"
         )
 
     finally:
