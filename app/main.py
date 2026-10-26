@@ -1,8 +1,7 @@
 
 from fastapi import FastAPI
 
-from app.routers import clientes, productos, pedidos
-
+from app.routers import clientes, productos, pedidos, reportes
 app = FastAPI(
     title="Tienda ADSO API",
     description="API REST para gestionar clientes, productos y pedidos",
@@ -12,6 +11,7 @@ app = FastAPI(
 app.include_router(clientes.router)
 app.include_router(productos.router)
 app.include_router(pedidos.router)
+app.include_router(reportes.router)
 
 
 @app.get("/")
